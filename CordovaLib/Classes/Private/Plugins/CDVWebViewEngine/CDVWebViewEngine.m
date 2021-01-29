@@ -554,21 +554,35 @@ static void * KVOContext = &KVOContext;
         }
     }
 
-    if (anyPluginsResponded) {
-        return decisionHandler(shouldAllowRequest);
-    }
+    // NOTE(ram): WkWebView does not support tel, sms, mailto links by default,
+    // and cordova-ios does not address this. The following code is taken from
+    // https://github.com/propelinc/cordova-plugin-ionic-webview/blob/a438446b819b44a86840b6e51d702ba5b3f20b06/src/ios/CDVWKWebViewEngine.m#L766-L780
 
     /*
      * Handle all other types of urls (tel:, sms:), and requests to load a url in the main webview.
      */
-    BOOL shouldAllowNavigation = [self defaultResourcePolicyForURL:url];
-    if (shouldAllowNavigation) {
-        return decisionHandler(YES);
-    } else {
-        [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginHandleOpenURLNotification object:url]];
+    if (!anyPluginsResponded) {
+        shouldAllowRequest = [self defaultResourcePolicyForURL:url];
+        if (!shouldAllowRequest) {
+            [[NSNotificationCenter defaultCenter] postNotification:[NSNotification notificationWithName:CDVPluginHandleOpenURLNotification object:url]];
+        }
     }
 
-    return decisionHandler(NO);
+    if (shouldAllowRequest) {
+        NSString *scheme = url.scheme;
+        if ([scheme isEqualToString:@"tel"] ||
+            [scheme isEqualToString:@"mailto"] ||
+            [scheme isEqualToString:@"facetime"] ||
+            [scheme isEqualToString:@"sms"] ||
+            [scheme isEqualToString:@"maps"]) {
+            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+            decisionHandler(WKNavigationActionPolicyCancel);
+        } else {
+            decisionHandler(WKNavigationActionPolicyAllow);
+        }
+    } else {
+        decisionHandler(WKNavigationActionPolicyCancel);
+    }
 }
 
 #pragma mark - Plugin interface
